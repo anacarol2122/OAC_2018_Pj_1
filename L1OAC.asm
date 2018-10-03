@@ -2,19 +2,36 @@
 	
 	
 	filename: .asciiz "/home/ana/Documentos/OAC 22018/img.bmp"
+	mensagem_inicial: .asciiz "Qual o nome do arquivo da imagem?"
+	mensagem_inicial2: .asciiz "Sua imagem possui largura:\n"
+	mensagem_inicial3: .asciiz "\nSua imagem possui altura:\n"
+	mensagem_inicial4: .asciiz "\nAbra o btmap display, ajuste as dimensões e o direcione para memoria heap. Quando terminar precione enter.\n"
+	mensagem_menu1: .asciiz "Qual efeito voce gostaria de realizar na imagem?\n1-Efeito de borramento\n2-Efeito de extração de bordas\n3-Efeito de binarização por limiar\n"
+	mensagem_menu1_2: .asciiz "Qual a mascara usar para o efeito?\n1-Horizontal\n2-Vertical\n3-Cruz\n4-Quadrado 3x3\n"
+	mensagem_menu1_2_1: .asciiz "Qual a intensidade do bytes R para a mascara?\n"
+	mensagem_menu1_2_2: .asciiz "Qual a intensidade do bytes G para a mascara?\n"
+	mensagem_menu1_2_3: .asciiz "Qual a intensidade do bytes B para a mascara?\n"
+	mensagem_menu2: .asciiz "Opcao incorreta. Tente novamente.\n"
 	men: .space 2
 	.align 2
 	men1: .space 52
-	vetorEdge0: .space 8
-	vetorEdge1: .space 8
-	vetorEdge2: .space 8
-	pixel_image: .space 8
-	result: .space 8
+	vetorEdge0: .space 12
+	vetorEdge1: .space 12
+	vetorEdge2: .space 12
+	pixel_image: .space 12
+	result: .space 4
 	buffer_extractor: .space  10240
 	buffer_extractor2: .space 10240
 
 .text
 
+	#la $a0, mensagem_inicial
+	#li $v0, 4
+	#syscall
+	#la $a0, filename
+	#li $a1, 256
+	#li $v0, 8
+	#syscall
 	
 	la $a0, filename
 	li $a1, 0
@@ -30,55 +47,54 @@
 	la $a1, men1
 	jal read_file
 	
-	#variaveis globais
+	#variaveis globais 
 	lw $s1, 0($a1) # Tamanho do arquivo
 	lw $s2, 8($a1) # Offset para comeÃ§o dos dados da imagem
+	sub $s1, $s1, $s2 #tamanho da imagem em bytes
 	lw $s3, 16($a1) # Largura da imagem em pixels
 	lw $s4, 20($a1) # Altura da imagem em pixels 
-	addi $s1, $s1, -54
 
-	move $t0, $zero
-	li $t1, 0x10040000 #Prepara o endereÃ§o da memoria heap para armazenar a imagem
+	li $t2, 0x10040000 #Prepara o endereco da memoria heap para armazenar a imagem
+	mul $t3, $s4, $s3
+	mul $t3, $t3, 4
+	add $t2, $t2, $t3 #Abrindo espaço para imagem (Arquivo comeca dos pixels inferiores)
+	mul $t3, $s3, 4
+	move $t0, $0
 	
-	load_image:
-	
+load_image:
 	beq $t0, $s1, exit_load_image
-	sb $zero, 3($t1)
-	li $a2, 3
-	la $a1, men1
-	jal read_file
+	sub $t2, $t2, $t3
+	move $t1, $0
+	loop_load_image: 
+		beq $t1, $s3, exit_loop_load_image
+		li $a2, 3
+		la $a1, men1
+		jal read_file
 	
-	lbu $t2, 0($a1)
-	sb $t2, 0($t1)
-	lbu $t2, 1($a1)
-	sb $t2, 1($t1)
-	lbu $t2, 2($a1)
-	sb $t2, 2($t1)
-	addi $t0, $t0, 3 
-	addi $t1, $t1, 4
-	j load_image
-	
-	exit_load_image: 
-	
+		lw $t4, 0($a1)
+		sw $t4, 0($t2)
+		addi $t0, $t0, 3 
+		addi $t2, $t2, 4
+		addi $t1, $t1, 1
+		j loop_load_image
+	exit_loop_load_image:
+		sub $t2, $t2, $t3
+		j load_image
+exit_load_image:  
 	move $a0, $s0
 	jal close_file
-	jal turn_image
 	li $a0, 0x10040000
 	move $a1, $s1 
 	jal save_original_image
-	li $a0, 1
-	li $a1, 1
-	li $a2, 1
-	li $a3, 1
-	jal Edge_Extractor
-	move $a0, $fp
-	move $a1, $s1
-	jal Edge_detector
+	jal menu
+	#move $a0, $fp
+	#move $a1, $s1
+	#jal Edge_detector
 	j exit
 	 
+
 	
-	
-	open_file: #Funcao abre arquivo que recebe como argumento em $a0 o endereÃ§o onde esta armazenado o 
+open_file: #Funcao abre arquivo que recebe como argumento em $a0 o endereÃ§o onde esta armazenado o 
 	# nome do arquivo e em $a1 a flag (0 - read, 1-write) e retorna em $v0 0 descritor do arquivo.
 	
 	li $v0, 13
@@ -86,52 +102,24 @@
 	syscall
 	jr $ra
 
-	read_file: #Funcao ler arquivo que recebe como argumento em $a0 o descritor do arquivo, em $a1 o endereÃ§o do buffer 
+read_file: #Funcao ler arquivo que recebe como argumento em $a0 o descritor do arquivo, em $a1 o endereÃ§o do buffer 
 	# na memoria e em $a2 o numero de bytes a serem lidos e retorna em $v0 o numero de bytes lidos ou 0 caso final do arquivo.
 	
 	li $v0, 14
 	syscall
 	jr $ra
 	
-	close_file:#Funcao fecha arquivo que recebe como argumento em $a0 o descritor do arquivo.
+close_file:#Funcao fecha arquivo que recebe como argumento em $a0 o descritor do arquivo.
 		
 	li $v0, 16
 	syscall
 	jr $ra
+exit: 
+	li $v0, 10
+	syscall 
+		
 	
-	
-###################################################################
-# vira a imagem para deixar ela na forma de visualização correta 
-turn_image: 
-la $t0,0x10040000
-addi $t1,$s3,-1 # sendo $s3 o uma das dimensões do arquivo 
-mul $t1,$t1,4  # sendo multiplicado para achar o vavor do endereço correto
-mul $t1,$t1,$s4 # sendo $s4 a altra dimensão do aquivo
-add $t1,$t1,$t0 # somando com o endereço base para encontrar o endereço correto
-div $t2,$s4,2 # dividindo a altura por dois para encontrar o ponto de parada 
 
-loop2: # loop para virar a immagem
-	lw $s5,($t0) # carregando os valores das words de forma equidistante em relação a horizontal
-	lw $s6,($t1) # carregando os valores das words de forma equidistante em relação a horizontal
-	sw $s6,($t0) # trocando
-	sw $s5,($t1) # trocando
-	addi $t0,$t0,4 # indo p próximo
-	addi $t1,$t1,4 # indo p proximo
-	addi $t3,$t3,1 # contado de largura 
-	beq $t3,$s3,sai2 # ferificando se chegou ao vinda da largura
-	j loop2
-sai2:
-	li $t3, 0 # carrega zero para a proxima linha da matriz de pixels 
-	mul $t4,$s3,8 # tamanho em em bytes de dus linha de pixels 
-	sub $t1,$t1,$t4 # subtrai de $t1 que se encontra no final da matriz de pixels
-	addi $t5,$t5,1 # contador 
-	beq $t5,$t2,sai3 # condição de parada da função de virar o arquivo
-	j loop2
-
-sai3:
-
-jr $ra
-###################################################################################	
 
 save_original_image: #Funcao que recebe como parametros: 1) o endereço da memoria onde foi carregada a imagem em $a0(memoria heap 0x10040000)
 #2) o tamanho da imagem em bytes em $a1($s1). Esta funcao decrementa $gp de acordo com o tamanho da imagem(largura*altura*4(word))pega 
@@ -158,7 +146,7 @@ save_original_image: #Funcao que recebe como parametros: 1) o endereço da memor
 end_save_original_image:
 	move $fp, $sp #Carrega em $fp o limite onde começa os dados da imagem original na pilha
 	jr $ra
-
+#######################################################################################################################################
 
 show_original_image: # Funcao que recebe como parametros: 1) O endereço de delimitador $fp da pila onde se encontra a imagem original em $a0
 #2) o tamanho da imagem em bytes em $a1($s1). Esta funcao carrega a imagem original na memoria heap para ser mostrada no bitmap display
@@ -183,21 +171,65 @@ show_original_image: # Funcao que recebe como parametros: 1) O endereço de deli
 exit_show_original_image:
 		jr $ra
 
-
-
-#####################################################################################################################################
-
-
-
-	
-exit: 
-	li $v0, 10
-	syscall 
-	
-	
-	
 #######################################################################################################################################	
+menu:
+
+	la $a0, mensagem_menu1
+	li $v0, 4
+	syscall
 	
+	li $v0, 5
+	syscall
+	
+  	li $t0, 1
+  	li $t1, 2
+  	li $t2, 3
+  	bne $t0, $v0, nao_borramento
+  	jal exit
+  	nao_borramento:
+  	bne $t1, $v0, nao_extracao
+  	
+  	la $a0, mensagem_menu1_2
+	li $v0, 4
+	syscall
+	li $v0, 5
+	syscall
+	move $a0, $v0
+	la $a0, mensagem_menu1_2_1
+	li $v0, 4
+	syscall
+	li $v0, 5
+	syscall
+	move $a1, $v0
+  	la $a0, mensagem_menu1_2_2
+	li $v0, 4
+	syscall
+	li $v0, 5
+	syscall
+	move $a2, $v0
+	la $a0, mensagem_menu1_2_3
+	li $v0, 4
+	syscall
+	li $v0, 5
+	syscall
+	move $a3, $v0
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	jal Edge_Extractor
+  	lw $ra, 0($sp)
+  	addi $sp, $sp, 4
+  	jr $ra
+  	
+	nao_extracao:
+	bne $t2, $v0, opcao_errada
+	jal exit
+	opcao_errada:
+	la $a0, mensagem_menu2
+	li $v0, 4
+	syscall
+	j menu
+
+####################################################################################################################################
 Edge_Extractor: # Função recebe em $a0 o tipo de mascara, em $a1, $a2, $a3 as intencidades RGB dos pixels da mascara respectivamente
 
 	#Empilhando todos os registradores salvos (Lembrar de desempilhar no final)
@@ -235,16 +267,17 @@ Edge_Extractor: # Função recebe em $a0 o tipo de mascara, em $a1, $a2, $a3 as 
 	move $t1, $0 #i
 	move $t2, $0 #j
 	addi $t3, $s1, -1 #Largura da imagem menos 1
-	
-	
-	
+
 	la $s7, pixel_image
 	
-	bne $a0, $zero, Bvertical ####!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	
+	li $t9, 4
+	beq $a0, $t9, Bquadrado 
+	addi $t9, $t9, -1
+	beq $a0, $t9, Bcruz
+	addi $t9, $t9, -1
+	beq $a0, $t9, Bvertical
 #################################################################################################################################
-	
-	Bhorizontal:
+Bhorizontal:
 	
 	Loop1_Bhorizontal:
 		beq $t1, $s2, exit_loop1_Bhorizontal #Compara linhas (altura)
@@ -361,10 +394,7 @@ Edge_Extractor: # Função recebe em $a0 o tipo de mascara, em $a1, $a2, $a3 as 
 			addi $s6, $s6, 4
 			
 			j Loop2_Bhorizontal
-			
-			
-			
-			
+
 			nao_primeiro:
 			bne $t2, $t3, nao_ultimo #Verifica se o ultimo bit da linha
 			
@@ -477,13 +507,7 @@ Edge_Extractor: # Função recebe em $a0 o tipo de mascara, em $a1, $a2, $a3 as 
 			addi $s6, $s6, 4
 		
 			j Loop2_Bhorizontal
-			
-			
-			
-			
-			
-	
-			
+
 			nao_ultimo:
 			
 			mul $t4, $t1, $s1 #linha vezes largura
@@ -619,20 +643,14 @@ Edge_Extractor: # Função recebe em $a0 o tipo de mascara, em $a1, $a2, $a3 as 
 			addi $s6, $s6, 4
 			
 			j Loop2_Bhorizontal
-			
-			
-			
-			
-			
+	
 		exit_loop2_Bhorizontal:
-			
-			
+
 			li $t5, 0x10040000
 			mul $t4, $t1, $s1 #linha vezes largura
 			mul $t4, $t4, 4
 			add $t5, $t5, $t4
-			
-			
+
 			move $t6, $0
 			la $t7, buffer_extractor
 		loop_carrega_linha:
@@ -661,10 +679,8 @@ Edge_Extractor: # Função recebe em $a0 o tipo de mascara, em $a1, $a2, $a3 as 
 		lw $s0, 0($sp)
 		addi $sp, $sp, 32
 	
-		jr $ra
-	
+		j Exit_Edge_Extractor
 
-	
 #####################################################################################################################################
 
 Bvertical:
@@ -1040,10 +1056,7 @@ Bvertical:
 			addi $s6, $s6, 4
 			
 			j Loop2_Bhorizontal
-			
-			
-			
-				
+	
 		exit_loop2_Bvertical:
 			
 			slti $t4, $t1, 1
@@ -1063,8 +1076,7 @@ Bvertical:
 			mul $t4, $t4, $s1 #linha menos 1 vezes largura
 			mul $t4, $t4, 4
 			add $t5, $t5, $t4
-			
-			
+
 			move $t6, $0
 			la $t7, buffer_extractor
 			loop_carrega_linha_vertical:
@@ -1086,8 +1098,7 @@ Bvertical:
 				mul $t4, $t4, $s1 #linha menos 1 vezes largura
 				mul $t4, $t4, 4
 				add $t5, $t5, $t4
-			
-			
+
 				move $t6, $0
 				la $t7, buffer_extractor2
 			loop_carrega_linha_vertical2:
@@ -1103,9 +1114,7 @@ Bvertical:
 				addi $t1, $t1, 1
 					
 				j Loop1_Bvertical
-			
-			
-			
+	
 	exit_loop1_Bvertical:
 	
 			li $t4, 2
@@ -1117,8 +1126,6 @@ Bvertical:
 			mul $t4, $t4, $s1 #linha menos 1 vezes largura
 			mul $t4, $t4, 4
 			add $t5, $t5, $t4
-			
-			
 			move $t6, $0
 			la $t7, buffer_extractor
 			loop_carrega_linha_vertical_ultimalinha:
@@ -1140,8 +1147,7 @@ Bvertical:
 				mul $t4, $t4, $s1 #linha menos 1 vezes largura
 				mul $t4, $t4, 4
 				add $t5, $t5, $t4
-			
-			
+
 				move $t6, $0
 				la $t7, buffer_extractor2
 			loop_carrega_linha_vertical2_ultimalinha:
@@ -1152,8 +1158,6 @@ Bvertical:
 				addi $t7, $t7, 4
 				addi $t6, $t6, 1
 				j loop_carrega_linha_vertical2_ultimalinha
-		
-	
 	
 		exit2_loop1_Bvertical:
 		lw $s7, 28($sp)
@@ -1166,14 +1170,10 @@ Bvertical:
 		lw $s0, 0($sp)
 		addi $sp, $sp, 32
 	
-		jr $ra
+		j Exit_Edge_Extractor
 	
 
-	
-		
 ##################################################################################################################3
-						
-		
 Bcruz:
 	
 	Loop1_Bcruz:
@@ -1192,7 +1192,6 @@ Bcruz:
 			
 			bne $t1, $zero, nao_primeira_linha_cruz #Verifica se primeira linha		
 
-                       #######################################################################################
 			bne $t2, $zero, nao_primeira_coluna_cruz
 				
 			li $t4, 255
@@ -2095,7 +2094,7 @@ Bcruz:
 			
 			############################################################################
 			nao_ultima_linha_cruz:
-			###########################################################################
+
 			bne $t2, $zero, nao_primeira_coluna_cruz3
 			
 			li $t4, 255
@@ -2594,8 +2593,7 @@ Bcruz:
 			sw $t1, 0($sp)
 			sw $t2, 4($sp)
 			sw $t3, 8($sp)
-			
-			
+
 			move $a0, $s3
 			move $a1, $s4
 			move $a2, $s5
@@ -2643,8 +2641,6 @@ Bcruz:
 			mul $t4, $t4, $s1 #linha menos 1 vezes largura
 			mul $t4, $t4, 4
 			add $t5, $t5, $t4
-			
-			
 			move $t6, $0
 			la $t7, buffer_extractor
 			loop_carrega_linha_cruz:
@@ -2666,8 +2662,6 @@ Bcruz:
 				mul $t4, $t4, $s1 #linha menos 1 vezes largura
 				mul $t4, $t4, 4
 				add $t5, $t5, $t4
-			
-			
 				move $t6, $0
 				la $t7, buffer_extractor2
 			loop_carrega_linha_cruz2:
@@ -2683,9 +2677,7 @@ Bcruz:
 				addi $t1, $t1, 1
 					
 				j Loop1_Bcruz
-			
-			
-			
+
 	exit_loop1_Bcruz:
 	
 			li $t4, 2
@@ -2697,8 +2689,6 @@ Bcruz:
 			mul $t4, $t4, $s1 #linha menos 1 vezes largura
 			mul $t4, $t4, 4
 			add $t5, $t5, $t4
-			
-			
 			move $t6, $0
 			la $t7, buffer_extractor
 			loop_carrega_linha_cruz_ultimalinha:
@@ -2720,8 +2710,7 @@ Bcruz:
 				mul $t4, $t4, $s1 #linha menos 1 vezes largura
 				mul $t4, $t4, 4
 				add $t5, $t5, $t4
-			
-			
+
 				move $t6, $0
 				la $t7, buffer_extractor2
 			loop_carrega_linha_cruz2_ultimalinha:
@@ -2732,9 +2721,7 @@ Bcruz:
 				addi $t7, $t7, 4
 				addi $t6, $t6, 1
 				j loop_carrega_linha_cruz2_ultimalinha
-		
-	
-	
+
 		exit2_loop1_Bcruz:
 		lw $s7, 28($sp)
 		lw $s6, 24($sp)
@@ -2746,16 +2733,2085 @@ Bcruz:
 		lw $s0, 0($sp)
 		addi $sp, $sp, 32
 	
-		jr $ra
+		j Exit_Edge_Extractor
 	
 
+#########################################################################################################################################
+Bquadrado:
 	
+	Loop1_Bquadrado:
+		beq $t1, $s2, exit_loop1_Bquadrado #Compara linhas (altura)
+		li $t4, 2
+		div $t1, $t4
+		mfhi $t4
+		beq $t4, $zero, parquadrado
+		la $s6, buffer_extractor
+		j Loop2_Bquadrado
+		parquadrado:
+		la $s6, buffer_extractor2
 		
-##################################################################################################################3
+		Loop2_Bquadrado:
+			beq $t2, $s1, exit_loop2_Bquadrado #Compara colunas (largura)
+			
+			bne $t1, $zero, nao_primeira_linha_quadrado #Verifica se primeira linha		
+
+                       #######################################################################################
+			bne $t2, $zero, nao_primeira_coluna_quadrado
+				
+			li $t4, 255	
+			sb $t4, 5($s3)
+			sb $t4, 5($s4)
+			sb $t4, 5($s5)
+			sb $t4, 0($s3)
+			sb $t4, 0($s4)
+			sb $t4, 0($s5)
+			sb $t4, 6($s3)
+			sb $t4, 6($s4)
+			sb $t4, 6($s5)
+			sb $t4, 3($s3)
+			sb $t4, 3($s4)
+			sb $t4, 3($s5)
+			sb $t4, 7($s3)
+			sb $t4, 7($s4)
+			sb $t4, 7($s5)
+			
+			
+			li $t5, 0x10040000
+			
+			lw $t4, 0($t5) #captura o pixel da imagem na memoria heap
+			sw $t4, 0($s7)
+			
+			#####################################################################################
+			
+			lbu $t4, 2($s7) #subtraido o valor R do elemento estruturante do byte R do pixel_image
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo1_quadrado
+			move $t4, $0
+			nao_negativo1_quadrado: sb $t4, 1($s3)
+			
+			lbu $t4, 1($s7) #subtraido o valor G do elemento estruturante do byte G do pixel_image
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo2_quadrado
+			move $t4, $0
+			nao_negativo2_quadrado: sb $t4, 1($s4)
+			
+			lbu $t4, 0($s7) #subtraido o valor B do elemento estruturante do byte B do pixel_image
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo3_quadrado
+			move $t4, $0
+			nao_negativo3_quadrado: sb $t4, 1($s5)
+			 
+			######################################################################################## 
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo1_2_quadrado
+			move $t4, $0
+			nao_negativo1_2_quadrado: sb $t4, 4($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo2_2_quadrado
+			move $t4, $0
+			nao_negativo2_2_quadrado: sb $t4, 4($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo3_2_quadrado
+			move $t4, $0
+			nao_negativo3_2_quadrado: sb $t4, 4($s5)
+			
+			########################################################################################
+			
+			mul $t4, $s1, 4
+			addi $t5, $t5, -4
+			add $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo1_3_quadrado
+			move $t4, $0
+			nao_negativo1_3_quadrado: sb $t4, 2($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo2_3_quadrado
+			move $t4, $0
+			nao_negativo2_3_quadrado: sb $t4, 2($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo3_3_quadrado
+			move $t4, $0
+			nao_negativo3_3_quadrado: sb $t4, 2($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo1_4_quadrado
+			move $t4, $0
+			nao_negativo1_4_quadrado: sb $t4, 8($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo2_4_quadrado
+			move $t4, $0
+			nao_negativo2_4_quadrado: sb $t4, 8($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo3_4_quadrado
+			move $t4, $0
+			nao_negativo3_4_quadrado: sb $t4, 8($s5)
+			
+			########################################################################################
+			
+			#Chamando a funcao minimiza os valores dos vetores RGB
+			addi $sp, $sp, -20
+			sw $ra, 0($sp)
+			sw $a0, 4($sp)
+			sw $a1, 8($sp)
+			sw $a2, 12($sp)
+			sw $a3, 16($sp)
+			
+			addi $sp, $sp, -12 #Empilhando os contadores
+			sw $t1, 0($sp)
+			sw $t2, 4($sp)
+			sw $t3, 8($sp)
+			
+			
+			move $a0, $s3
+			move $a1, $s4
+			move $a2, $s5
+			li $a3, 9
+			jal minimiza
+			
+			lw $t3, 8($sp)
+			lw $t2, 4($sp)
+			lw $t1, 0($sp)
+			addi $sp, $sp, 12
+			
+			
+			lw $a3, 16($sp)
+			lw $a2, 12($sp)
+			lw $a1, 8($sp)
+			lw $a0, 4($sp)
+			lw $ra, 0($sp)
+			addi $sp, $sp, 20
+			
+			la $t5, result
+			lw $t6, 0($t5)
+			sw $t6, 0($s6)
+			addi $s6, $s6, 4
+			
+			addi $t2, $t2, 1
+			j Loop2_Bquadrado
+				
+			nao_primeira_coluna_quadrado:
+			bne $t2, $t3, nao_ultima_coluna_quadrado
+			
+			li $t4, 255	
+			sb $t4, 5($s3)
+			sb $t4, 5($s4)
+			sb $t4, 5($s5)
+			sb $t4, 0($s3)
+			sb $t4, 0($s4)
+			sb $t4, 0($s5)
+			sb $t4, 6($s3)
+			sb $t4, 6($s4)
+			sb $t4, 6($s5)
+			sb $t4, 4($s3)
+			sb $t4, 4($s4)
+			sb $t4, 4($s5)
+			sb $t4, 8($s3)
+			sb $t4, 8($s4)
+			sb $t4, 8($s5)
+			
+			
+			
+			mul $t4, $t2, 4
+			li $t5, 0x10040000
+			add $t5, $t5, $t4
+			
+			lw $t4, 0($t5) #captura o pixel da imagem na memoria heap
+			sw $t4, 0($s7)
+			
+			#####################################################################################
+			
+			lbu $t4, 2($s7) #subtraido o valor R do elemento estruturante do byte R do pixel_image
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo4_quadrado
+			move $t4, $0
+			nao_negativo4_quadrado: sb $t4, 1($s3)
+			
+			lbu $t4, 1($s7) #subtraido o valor G do elemento estruturante do byte G do pixel_image
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo5_quadrado
+			move $t4, $0
+			nao_negativo5_quadrado: sb $t4, 1($s4)
+			
+			lbu $t4, 0($s7) #subtraido o valor B do elemento estruturante do byte B do pixel_image
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo6_quadrado
+			move $t4, $0
+			nao_negativo6_quadrado: sb $t4, 1($s5)
+			 
+			######################################################################################## 
+			
+			addi $t5, $t5, -4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo4_2_quadrado
+			move $t4, $0
+			nao_negativo4_2_quadrado: sb $t4, 3($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo5_2_quadrado
+			move $t4, $0
+			nao_negativo5_2_quadrado: sb $t4, 3($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo6_2_quadrado
+			move $t4, $0
+			nao_negativo6_2_quadrado: sb $t4, 3($s5)
+			
+			########################################################################################
+			
+			
+			mul $t4, $s1, 4
+			addi $t5, $t5, 4
+			add $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo4_3_quadrado
+			move $t4, $0
+			nao_negativo4_3_quadrado: sb $t4, 2($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo5_3_quadrado
+			move $t4, $0
+			nao_negativo5_3_quadrado: sb $t4, 2($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo6_3_quadrado
+			move $t4, $0
+			nao_negativo6_3_quadrado: sb $t4, 2($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo4_4_quadrado
+			move $t4, $0
+			nao_negativo4_4_quadrado: sb $t4, 7($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo5_4_quadrado
+			move $t4, $0
+			nao_negativo5_4_quadrado: sb $t4, 7($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo6_4_quadrado
+			move $t4, $0
+			nao_negativo6_4_quadrado: sb $t4, 7($s5)
+			
+			
+			#Chamando a funcao minimiza os valores dos vetores RGB
+			addi $sp, $sp, -20
+			sw $ra, 0($sp)
+			sw $a0, 4($sp)
+			sw $a1, 8($sp)
+			sw $a2, 12($sp)
+			sw $a3, 16($sp)
+			
+			addi $sp, $sp, -12 #Empilhando os contadores
+			sw $t1, 0($sp)
+			sw $t2, 4($sp)
+			sw $t3, 8($sp)
+			
+			
+			move $a0, $s3
+			move $a1, $s4
+			move $a2, $s5
+			li $a3, 9
+			jal minimiza
+			
+			lw $t3, 8($sp)
+			lw $t2, 4($sp)
+			lw $t1, 0($sp)
+			addi $sp, $sp, 12
+			
+			
+			lw $a3, 16($sp)
+			lw $a2, 12($sp)
+			lw $a1, 8($sp)
+			lw $a0, 4($sp)
+			lw $ra, 0($sp)
+			addi $sp, $sp, 20
+			
+			la $t5, result
+			lw $t6, 0($t5)
+			sw $t6, 0($s6)
+			addi $s6, $s6, 4
+			
+			addi $t2, $t2, 1
+			j Loop2_Bquadrado
+			
+			
+			nao_ultima_coluna_quadrado:
+			
+			li $t4, 255
+			sb $t4, 0($s3)
+			sb $t4, 0($s4)
+			sb $t4, 0($s5)
+			sb $t4, 5($s3)
+			sb $t4, 5($s4)
+			sb $t4, 5($s5)
+			sb $t4, 6($s3)
+			sb $t4, 6($s4)
+			sb $t4, 6($s5)
+			
+			
+			
+			mul $t4, $t2, 4
+			li $t5, 0x10040000
+			add $t5, $t5, $t4
+			
+			lw $t4, 0($t5) #captura o pixel da imagem na memoria heap
+			sw $t4, 0($s7)
+			
+			#####################################################################################
+			
+			lbu $t4, 2($s7) #subtraido o valor R do elemento estruturante do byte R do pixel_image
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo7_quadrado
+			move $t4, $0
+			nao_negativo7_quadrado: sb $t4, 1($s3)
+			
+			lbu $t4, 1($s7) #subtraido o valor G do elemento estruturante do byte G do pixel_image
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo8_quadrado
+			move $t4, $0
+			nao_negativo8_quadrado: sb $t4, 1($s4)
+			
+			lbu $t4, 0($s7) #subtraido o valor B do elemento estruturante do byte B do pixel_image
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo9_quadrado
+			move $t4, $0
+			nao_negativo9_quadrado: sb $t4, 1($s5)
+			 
+			######################################################################################## 
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo7_2_quadrado
+			move $t4, $0
+			nao_negativo7_2_quadrado: sb $t4, 4($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo8_2_quadrado
+			move $t4, $0
+			nao_negativo8_2_quadrado: sb $t4, 4($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo9_2_quadrado
+			move $t4, $0
+			nao_negativo9_2_quadrado: sb $t4, 4($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -8
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo7_3_quadrado
+			move $t4, $0
+			nao_negativo7_3_quadrado: sb $t4, 3($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo8_3_quadrado
+			move $t4, $0
+			nao_negativo8_3_quadrado: sb $t4, 3($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo9_3_quadrado
+			move $t4, $0
+			nao_negativo9_3_quadrado: sb $t4, 3($s5)
+			
+			########################################################################################
+			
+			
+			mul $t4, $s1, 4
+			addi $t5, $t5, 4
+			add $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo7_4_quadrado
+			move $t4, $0
+			nao_negativo7_4_quadrado: sb $t4, 2($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo8_4_quadrado
+			move $t4, $0
+			nao_negativo8_4_quadrado: sb $t4, 2($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo9_4_quadrado
+			move $t4, $0
+			nao_negativo9_4_quadrado: sb $t4, 2($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo7_5_quadrado
+			move $t4, $0
+			nao_negativo7_5_quadrado: sb $t4, 8($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo8_5_quadrado
+			move $t4, $0
+			nao_negativo8_5_quadrado: sb $t4, 8($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo9_5_quadrado
+			move $t4, $0
+			nao_negativo9_5_quadrado: sb $t4, 8($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -8
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo7_6_quadrado
+			move $t4, $0
+			nao_negativo7_6_quadrado: sb $t4, 7($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo8_6_quadrado
+			move $t4, $0
+			nao_negativo8_6_quadrado: sb $t4, 7($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo9_6_quadrado
+			move $t4, $0
+			nao_negativo9_6_quadrado: sb $t4, 7($s5)
+			
+			########################################################################################
+			
+			#Chamando a funcao minimiza os valores dos vetores RGB
+			addi $sp, $sp, -20
+			sw $ra, 0($sp)
+			sw $a0, 4($sp)
+			sw $a1, 8($sp)
+			sw $a2, 12($sp)
+			sw $a3, 16($sp)
+			
+			addi $sp, $sp, -12 #Empilhando os contadores
+			sw $t1, 0($sp)
+			sw $t2, 4($sp)
+			sw $t3, 8($sp)
+			
+			move $a0, $s3
+			move $a1, $s4
+			move $a2, $s5
+			li $a3, 9
+			jal minimiza
+			
+			lw $t3, 8($sp)
+			lw $t2, 4($sp)
+			lw $t1, 0($sp)
+			addi $sp, $sp, 12
+			
+			
+			lw $a3, 16($sp)
+			lw $a2, 12($sp)
+			lw $a1, 8($sp)
+			lw $a0, 4($sp)
+			lw $ra, 0($sp)
+			addi $sp, $sp, 20
+			
+			la $t5, result
+			lw $t6, 0($t5)
+			sw $t6, 0($s6)
+			addi $s6, $s6, 4
+			addi $t2, $t2, 1
+			j Loop2_Bquadrado
+                        #########################################################################################
+			
+			nao_primeira_linha_quadrado:
+			bne $t1, $t3, nao_ultima_linha_quadrado 
+			
+			bne $t2, $zero, nao_primeira_coluna_quadrado2
+	
+			li $t4, 255
+			sb $t4, 2($s3)
+			sb $t4, 2($s4)
+			sb $t4, 2($s5)
+			sb $t4, 7($s3)
+			sb $t4, 7($s4)
+			sb $t4, 7($s5)
+			sb $t4, 8($s3)
+			sb $t4, 8($s4)
+			sb $t4, 8($s5)
+			sb $t4, 3($s3)
+			sb $t4, 3($s4)
+			sb $t4, 3($s5)
+			sb $t4, 5($s3)
+			sb $t4, 5($s4)
+			sb $t4, 5($s5)
+			
+			
+			mul $t4, $s1, $t1
+			mul $t4, $t4, 4
+			li $t5, 0x10040000
+			add $t5, $t5, $t4
+			
+			lw $t4, 0($t5) #captura o pixel da imagem na memoria heap
+			sw $t4, 0($s7)
+			
+			#####################################################################################
+			
+			lbu $t4, 2($s7) #subtraido o valor R do elemento estruturante do byte R do pixel_image
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo_10_quadrado
+			move $t4, $0
+			nao_negativo_10_quadrado: sb $t4, 1($s3)
+			
+			lbu $t4, 1($s7) #subtraido o valor G do elemento estruturante do byte G do pixel_image
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo_11_quadrado
+			move $t4, $0
+			nao_negativo_11_quadrado: sb $t4, 1($s4)
+			
+			lbu $t4, 0($s7) #subtraido o valor B do elemento estruturante do byte B do pixel_image
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo_12_quadrado
+			move $t4, $0
+			nao_negativo_12_quadrado: sb $t4, 1($s5)
+			 
+			######################################################################################## 
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo10_2_quadrado
+			move $t4, $0
+			nao_negativo10_2_quadrado: sb $t4, 4($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo11_2_quadrado
+			move $t4, $0
+			nao_negativo11_2_quadrado: sb $t4, 4($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo12_2_quadrado
+			move $t4, $0
+			nao_negativo12_2_quadrado: sb $t4, 4($s5)
+			
+			########################################################################################
+			
+			mul $t4, $s1, 4
+			addi $t5, $t5, -4
+			sub $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo10_3_quadrado
+			move $t4, $0
+			nao_negativo10_3_quadrado: sb $t4, 0($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo11_3_quadrado
+			move $t4, $0
+			nao_negativo11_3_quadrado: sb $t4, 0($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo12_3_quadrado
+			move $t4, $0
+			nao_negativo12_3_quadrado: sb $t4, 0($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo10_4_quadrado
+			move $t4, $0
+			nao_negativo10_4_quadrado: sb $t4, 6($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo11_4_quadrado
+			move $t4, $0
+			nao_negativo11_4_quadrado: sb $t4, 6($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo12_4_quadrado
+			move $t4, $0
+			nao_negativo12_4_quadrado: sb $t4, 6($s5)
+			
+			########################################################################################
+			
+			#Chamando a funcao minimiza os valores dos vetores RGB
+			addi $sp, $sp, -20
+			sw $ra, 0($sp)
+			sw $a0, 4($sp)
+			sw $a1, 8($sp)
+			sw $a2, 12($sp)
+			sw $a3, 16($sp)
+			
+			addi $sp, $sp, -12 #Empilhando os contadores
+			sw $t1, 0($sp)
+			sw $t2, 4($sp)
+			sw $t3, 8($sp)
+			
+			
+			move $a0, $s3
+			move $a1, $s4
+			move $a2, $s5
+			li $a3, 9
+			jal minimiza
+			
+			lw $t3, 8($sp)
+			lw $t2, 4($sp)
+			lw $t1, 0($sp)
+			addi $sp, $sp, 12
+			
+			
+			lw $a3, 16($sp)
+			lw $a2, 12($sp)
+			lw $a1, 8($sp)
+			lw $a0, 4($sp)
+			lw $ra, 0($sp)
+			addi $sp, $sp, 20
+			
+			la $t5, result
+			lw $t6, 0($t5)
+			sw $t6, 0($s6)
+			addi $s6, $s6, 4
+			
+			addi $t2, $t2, 1
+			j Loop2_Bquadrado
+			
+			nao_primeira_coluna_quadrado2:
+			bne $t2, $t3, nao_ultima_coluna_quadrado2
+			
+			li $t4, 255
+			sb $t4, 2($s3)
+			sb $t4, 2($s4)
+			sb $t4, 2($s5)
+			sb $t4, 7($s3)
+			sb $t4, 7($s4)
+			sb $t4, 7($s5)
+			sb $t4, 8($s3)
+			sb $t4, 8($s4)
+			sb $t4, 8($s5)
+			sb $t4, 4($s3)
+			sb $t4, 4($s4)
+			sb $t4, 4($s5)
+			sb $t4, 6($s3)
+			sb $t4, 6($s4)
+			sb $t4, 6($s5)
+			
+		
+			mul $t4, $s1, $t1
+			add $t4, $t4, $t2
+			mul $t4, $t4, 4
+			li $t5, 0x10040000
+			add $t5, $t5, $t4
+			
+			lw $t4, 0($t5) #captura o pixel da imagem na memoria heap
+			sw $t4, 0($s7)	
+			
+			#####################################################################################
+			
+			lbu $t4, 2($s7) #subtraido o valor R do elemento estruturante do byte R do pixel_image
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo_13_quadraddo
+			move $t4, $0
+			nao_negativo_13_quadraddo: sb $t4, 1($s3)
+			
+			lbu $t4, 1($s7) #subtraido o valor G do elemento estruturante do byte G do pixel_image
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo_14_quadraddo
+			move $t4, $0
+			nao_negativo_14_quadraddo: sb $t4, 1($s4)
+			
+			lbu $t4, 0($s7) #subtraido o valor B do elemento estruturante do byte B do pixel_image
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo_15_quadraddo
+			move $t4, $0
+			nao_negativo_15_quadraddo: sb $t4, 1($s5)
+			 
+			######################################################################################## 
+			
+			addi $t5, $t5, -4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo13_2_quadrado
+			move $t4, $0
+			nao_negativo13_2_quadrado: sb $t4, 3($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo14_2_quadrado
+			move $t4, $0
+			nao_negativo14_2_quadrado: sb $t4, 3($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo15_2_quadrado
+			move $t4, $0
+			nao_negativo15_2_quadrado: sb $t4, 3($s5)
+			
+			########################################################################################
+			
+			
+			mul $t4, $s1, 4
+			addi $t5, $t5, 4
+			sub $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo13_3_quadraddo
+			move $t4, $0
+			nao_negativo13_3_quadraddo: sb $t4, 0($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo14_3_quadraddo
+			move $t4, $0
+			nao_negativo14_3_quadraddo: sb $t4, 0($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo15_3_quadraddo
+			move $t4, $0
+			nao_negativo15_3_quadraddo: sb $t4, 0($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo13_4_quadraddo
+			move $t4, $0
+			nao_negativo13_4_quadraddo: sb $t4, 5($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo14_4_quadraddo
+			move $t4, $0
+			nao_negativo14_4_quadraddo: sb $t4, 5($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo15_4_quadraddo
+			move $t4, $0
+			nao_negativo15_4_quadraddo: sb $t4, 5($s5)
+			
+			########################################################################################
+			
+			#Chamando a funcao minimiza os valores dos vetores RGB
+			addi $sp, $sp, -20
+			sw $ra, 0($sp)
+			sw $a0, 4($sp)
+			sw $a1, 8($sp)
+			sw $a2, 12($sp)
+			sw $a3, 16($sp)
+			
+			addi $sp, $sp, -12 #Empilhando os contadores
+			sw $t1, 0($sp)
+			sw $t2, 4($sp)
+			sw $t3, 8($sp)
+			
+			
+			move $a0, $s3
+			move $a1, $s4
+			move $a2, $s5
+			li $a3, 9
+			jal minimiza
+			
+			lw $t3, 8($sp)
+			lw $t2, 4($sp)
+			lw $t1, 0($sp)
+			addi $sp, $sp, 12
+			
+			
+			lw $a3, 16($sp)
+			lw $a2, 12($sp)
+			lw $a1, 8($sp)
+			lw $a0, 4($sp)
+			lw $ra, 0($sp)
+			addi $sp, $sp, 20
+			
+			la $t5, result
+			lw $t6, 0($t5)
+			sw $t6, 0($s6)
+			addi $s6, $s6, 4
+			
+			addi $t2, $t2, 1
+			j Loop2_Bquadrado	
+
+			nao_ultima_coluna_quadrado2:
+			
+			li $t4, 255
+			sb $t4, 2($s3)
+			sb $t4, 2($s4)
+			sb $t4, 2($s5)
+			sb $t4, 7($s3)
+			sb $t4, 7($s4)
+			sb $t4, 7($s5)
+			sb $t4, 8($s3)
+			sb $t4, 8($s4)
+			sb $t4, 8($s5)
+			
+			
+			mul $t4, $s1, $t1
+			add $t4, $t4, $t2
+			mul $t4, $t4, 4
+			li $t5, 0x10040000
+			add $t5, $t5, $t4
+			
+			lw $t4, 0($t5) #captura o pixel da imagem na memoria heap
+			sw $t4, 0($s7)
+			
+			#####################################################################################
+			
+			lbu $t4, 2($s7) #subtraido o valor R do elemento estruturante do byte R do pixel_image
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo16_quadrado
+			move $t4, $0
+			nao_negativo16_quadrado: sb $t4, 1($s3)
+			
+			lbu $t4, 1($s7) #subtraido o valor G do elemento estruturante do byte G do pixel_image
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo17_quadrado
+			move $t4, $0
+			nao_negativo17_quadrado: sb $t4, 1($s4)
+			
+			lbu $t4, 0($s7) #subtraido o valor B do elemento estruturante do byte B do pixel_image
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo18_quadrado
+			move $t4, $0
+			nao_negativo18_quadrado: sb $t4, 1($s5)
+			 
+			######################################################################################## 
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo16_2_quadrado
+			move $t4, $0
+			nao_negativo16_2_quadrado: sb $t4, 4($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo17_2_quadrado
+			move $t4, $0
+			nao_negativo17_2_quadrado: sb $t4, 4($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo18_2_quadrado
+			move $t4, $0
+			nao_negativo18_2_quadrado: sb $t4, 4($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -8
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo16_3_quadrado
+			move $t4, $0
+			nao_negativo16_3_quadrado: sb $t4, 3($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo17_3_quadrado
+			move $t4, $0
+			nao_negativo17_3_quadrado: sb $t4, 3($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo18_3_quadrado
+			move $t4, $0
+			nao_negativo18_3_quadrado: sb $t4, 3($s5)
+			
+			########################################################################################
+			
+			
+			mul $t4, $s1, 4
+			addi $t5, $t5, 4
+			sub $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo16_4_quadrado
+			move $t4, $0
+			nao_negativo16_4_quadrado: sb $t4, 0($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo17_4_quadrado
+			move $t4, $0
+			nao_negativo17_4_quadrado: sb $t4, 0($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo18_4_quadrado
+			move $t4, $0
+			nao_negativo18_4_quadrado: sb $t4, 0($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo16_5_quadrado
+			move $t4, $0
+			nao_negativo16_5_quadrado: sb $t4, 6($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo17_5_quadrado
+			move $t4, $0
+			nao_negativo17_5_quadrado: sb $t4, 6($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo18_5_quadrado
+			move $t4, $0
+			nao_negativo18_5_quadrado: sb $t4, 6($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -8
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo16_6_quadrado
+			move $t4, $0
+			nao_negativo16_6_quadrado: sb $t4, 5($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo17_6_quadrado
+			move $t4, $0
+			nao_negativo17_6_quadrado: sb $t4, 5($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo18_6_quadrado
+			move $t4, $0
+			nao_negativo18_6_quadrado: sb $t4, 5($s5)
+			
+			########################################################################################
+			
+			
+			#Chamando a funcao minimiza os valores dos vetores RGB
+			addi $sp, $sp, -20
+			sw $ra, 0($sp)
+			sw $a0, 4($sp)
+			sw $a1, 8($sp)
+			sw $a2, 12($sp)
+			sw $a3, 16($sp)
+			
+			addi $sp, $sp, -12 #Empilhando os contadores
+			sw $t1, 0($sp)
+			sw $t2, 4($sp)
+			sw $t3, 8($sp)
+			
+			
+			move $a0, $s3
+			move $a1, $s4
+			move $a2, $s5
+			li $a3, 9
+			jal minimiza
+			
+			lw $t3, 8($sp)
+			lw $t2, 4($sp)
+			lw $t1, 0($sp)
+			addi $sp, $sp, 12
+			
+			
+			lw $a3, 16($sp)
+			lw $a2, 12($sp)
+			lw $a1, 8($sp)
+			lw $a0, 4($sp)
+			lw $ra, 0($sp)
+			addi $sp, $sp, 20
+
+			
+			la $t5, result
+			lw $t6, 0($t5)
+			sw $t6, 0($s6)
+			addi $s6, $s6, 4
+			addi $t2, $t2, 1
+			j Loop2_Bquadrado
+
+			############################################################################
+			nao_ultima_linha_quadrado:
+			
+			bne $t2, $zero, nao_primeira_coluna_quadrado3
+			
+			li $t4, 255
+			
+			sb $t4, 3($s3)
+			sb $t4, 3($s4)
+			sb $t4, 3($s5)
+			sb $t4, 5($s3)
+			sb $t4, 5($s4)
+			sb $t4, 5($s5)
+			sb $t4, 7($s3)
+			sb $t4, 7($s4)
+			sb $t4, 7($s5)
+
+			li $t5, 0x10040000
+			mul $t4, $s1, $t1
+			mul $t4, $t4, 4
+			add $t5, $t5, $t4
+			
+			lw $t4, 0($t5) #captura o pixel da imagem na memoria heap
+			sw $t4, 0($s7)
+			
+			#####################################################################################
+			
+			lbu $t4, 2($s7) #subtraido o valor R do elemento estruturante do byte R do pixel_image
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo19_quadrado
+			move $t4, $0
+			nao_negativo19_quadrado: sb $t4, 1($s3)
+			
+			lbu $t4, 1($s7) #subtraido o valor G do elemento estruturante do byte G do pixel_image
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo20_quadrado
+			move $t4, $0
+			nao_negativo20_quadrado: sb $t4, 1($s4)
+			
+			lbu $t4, 0($s7) #subtraido o valor B do elemento estruturante do byte B do pixel_image
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo21_quadrado
+			move $t4, $0
+			nao_negativo21_quadrado: sb $t4, 1($s5)
+			 
+			######################################################################################## 
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo19_2_quadrado
+			move $t4, $0
+			nao_negativo19_2_quadrado: sb $t4, 4($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo20_2_quadrado
+			move $t4, $0
+			nao_negativo20_2_quadrado: sb $t4, 4($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo21_2_quadrado
+			move $t4, $0
+			nao_negativo21_2_quadrado: sb $t4, 4($s5)
+			
+			########################################################################################
+			
+			mul $t4, $s1, 4
+			addi $t5, $t5, -4
+			add $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo19_3_quadrado
+			move $t4, $0
+			nao_negativo19_3_quadrado: sb $t4, 2($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo20_3_quadrado
+			move $t4, $0
+			nao_negativo20_3_quadrado: sb $t4, 2($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo21_3_quadrado
+			move $t4, $0
+			nao_negativo21_3_quadrado: sb $t4, 2($s5)
+			
+			########################################################################################
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo19_4_quadrado
+			move $t4, $0
+			nao_negativo19_4_quadrado: sb $t4, 8($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo20_4_quadrado
+			move $t4, $0
+			nao_negativo20_4_quadrado: sb $t4, 8($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo21_4_quadrado
+			move $t4, $0
+			nao_negativo21_4_quadrado: sb $t4, 8($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -4
+			mul $t4, $s1, 4
+			mul $t4, $t4, 2
+			sub $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo19_5_quadrado
+			move $t4, $0
+			nao_negativo19_5_quadrado: sb $t4, 0($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo20_5_quadrado
+			move $t4, $0
+			nao_negativo20_5_quadrado: sb $t4, 0($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo21_5_quadrado
+			move $t4, $0
+			nao_negativo21_5_quadrado: sb $t4, 0($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo19_6_quadrado
+			move $t4, $0
+			nao_negativo19_6_quadrado: sb $t4, 6($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo20_6_quadrado
+			move $t4, $0
+			nao_negativo20_6_quadrado: sb $t4, 6($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo21_6_quadrado
+			move $t4, $0
+			nao_negativo21_6_quadrado: sb $t4, 6($s5)
+			
+			########################################################################################
+			
+			#Chamando a funcao minimiza os valores dos vetores RGB
+			addi $sp, $sp, -20
+			sw $ra, 0($sp)
+			sw $a0, 4($sp)
+			sw $a1, 8($sp)
+			sw $a2, 12($sp)
+			sw $a3, 16($sp)
+			
+			addi $sp, $sp, -12 #Empilhando os contadores
+			sw $t1, 0($sp)
+			sw $t2, 4($sp)
+			sw $t3, 8($sp)
+			
+			
+			move $a0, $s3
+			move $a1, $s4
+			move $a2, $s5
+			li $a3, 9
+			jal minimiza
+			
+			lw $t3, 8($sp)
+			lw $t2, 4($sp)
+			lw $t1, 0($sp)
+			addi $sp, $sp, 12
+			
+			
+			lw $a3, 16($sp)
+			lw $a2, 12($sp)
+			lw $a1, 8($sp)
+			lw $a0, 4($sp)
+			lw $ra, 0($sp)
+			addi $sp, $sp, 20
+			
+			la $t5, result
+			lw $t6, 0($t5)
+			sw $t6, 0($s6)
+			addi $s6, $s6, 4
+			
+			addi $t2, $t2, 1
+			j Loop2_Bquadrado
+
+			nao_primeira_coluna_quadrado3:
+			bne $t2, $t3, nao_ultima_coluna_quadrado3
+		
+			li $t4, 255
+			sb $t4, 4($s3)
+			sb $t4, 4($s4)
+			sb $t4, 4($s5)
+			sb $t4, 6($s3)
+			sb $t4, 6($s4)
+			sb $t4, 6($s5)
+			sb $t4, 8($s3)
+			sb $t4, 8($s4)
+			sb $t4, 8($s5)
+			
+			
+			mul $t4, $s1, $t1
+			add $t4, $t4, $t2
+			mul $t4, $t4, 4
+			li $t5, 0x10040000
+			add $t5, $t5, $t4
+			
+			lw $t4, 0($t5) #captura o pixel da imagem na memoria heap
+			sw $t4, 0($s7)	
+			
+			#####################################################################################
+			
+			lbu $t4, 2($s7) #subtraido o valor R do elemento estruturante do byte R do pixel_image
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo_22_quadrado
+			move $t4, $0
+			nao_negativo_22_quadrado: sb $t4, 1($s3)
+			
+			lbu $t4, 1($s7) #subtraido o valor G do elemento estruturante do byte G do pixel_image
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo_23_quadrado
+			move $t4, $0
+			nao_negativo_23_quadrado: sb $t4, 1($s4)
+			
+			lbu $t4, 0($s7) #subtraido o valor B do elemento estruturante do byte B do pixel_image
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo_24_quadrado
+			move $t4, $0
+			nao_negativo_24_quadrado: sb $t4, 1($s5)
+			 
+			######################################################################################## 
+			
+			addi $t5, $t5, -4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo22_2_quadrado
+			move $t4, $0
+			nao_negativo22_2_quadrado: sb $t4, 3($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo23_2_quadrado
+			move $t4, $0
+			nao_negativo23_2_quadrado: sb $t4, 3($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo24_2_quadrado
+			move $t4, $0
+			nao_negativo24_2_quadrado: sb $t4, 3($s5)
+			
+			########################################################################################
+			
+			mul $t4, $s1, 4
+			addi $t5, $t5, 4
+			sub $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo22_3_quadrado
+			move $t4, $0
+			nao_negativo22_3_quadrado: sb $t4, 0($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo23_3_quadrado
+			move $t4, $0
+			nao_negativo23_3_quadrado: sb $t4, 0($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo24_3_quadrado
+			move $t4, $0
+			nao_negativo24_3_quadrado: sb $t4, 0($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo22_4_quadrado
+			move $t4, $0
+			nao_negativo22_4_quadrado: sb $t4, 5($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo23_4_quadrado
+			move $t4, $0
+			nao_negativo23_4_quadrado: sb $t4, 5($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo24_4_quadrado
+			move $t4, $0
+			nao_negativo24_4_quadrado: sb $t4, 5($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, 4
+			mul $t4, $s1, 4
+			mul $t4, $t4, 2
+			add $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo22_5_quadrado
+			move $t4, $0
+			nao_negativo22_5_quadrado: sb $t4, 2($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo23_5_quadrado
+			move $t4, $0
+			nao_negativo23_5_quadrado: sb $t4, 2($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo24_5_quadrado
+			move $t4, $0
+			nao_negativo24_5_quadrado: sb $t4, 2($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo22_6_quadrado
+			move $t4, $0
+			nao_negativo22_6_quadrado: sb $t4, 7($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo23_6_quadrado
+			move $t4, $0
+			nao_negativo23_6_quadrado: sb $t4, 7($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo24_6_quadrado
+			move $t4, $0
+			nao_negativo24_6_quadrado: sb $t4, 7($s5)
+			
+			########################################################################################
+			
+			#Chamando a funcao minimiza os valores dos vetores RGB
+			addi $sp, $sp, -20
+			sw $ra, 0($sp)
+			sw $a0, 4($sp)
+			sw $a1, 8($sp)
+			sw $a2, 12($sp)
+			sw $a3, 16($sp)
+			
+			addi $sp, $sp, -12 #Empilhando os contadores
+			sw $t1, 0($sp)
+			sw $t2, 4($sp)
+			sw $t3, 8($sp)
+			
+			
+			move $a0, $s3
+			move $a1, $s4
+			move $a2, $s5
+			li $a3, 9
+			jal minimiza
+			
+			lw $t3, 8($sp)
+			lw $t2, 4($sp)
+			lw $t1, 0($sp)
+			addi $sp, $sp, 12
+			
+			
+			lw $a3, 16($sp)
+			lw $a2, 12($sp)
+			lw $a1, 8($sp)
+			lw $a0, 4($sp)
+			lw $ra, 0($sp)
+			addi $sp, $sp, 20
+
+			
+			la $t5, result
+			lw $t6, 0($t5)
+			sw $t6, 0($s6)
+			addi $s6, $s6, 4
+			
+			addi $t2, $t2, 1
+			j Loop2_Bquadrado	
+				
+											
+			nao_ultima_coluna_quadrado3:
+		
+			mul $t4, $s1, $t1
+			add $t4, $t4, $t2
+			mul $t4, $t4, 4
+			li $t5, 0x10040000
+			add $t5, $t5, $t4
+			
+			lw $t4, 0($t5) #captura o pixel da imagem na memoria heap
+			sw $t4, 0($s7)
+			
+			#####################################################################################
+			
+			lbu $t4, 2($s7) #subtraido o valor R do elemento estruturante do byte R do pixel_image
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo25_quadrado
+			move $t4, $0
+			nao_negativo25_quadrado: sb $t4, 1($s3)
+			
+			lbu $t4, 1($s7) #subtraido o valor G do elemento estruturante do byte G do pixel_image
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo26_quadrado
+			move $t4, $0
+			nao_negativo26_quadrado: sb $t4, 1($s4)
+			
+			lbu $t4, 0($s7) #subtraido o valor B do elemento estruturante do byte B do pixel_image
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo27_quadrado
+			move $t4, $0
+			nao_negativo27_quadrado: sb $t4, 1($s5)
+			 
+			######################################################################################## 
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo25_2_quadrado
+			move $t4, $0
+			nao_negativo25_2_quadrado: sb $t4, 4($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo26_2_quadrado
+			move $t4, $0
+			nao_negativo26_2_quadrado: sb $t4, 4($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo27_2_quadrado
+			move $t4, $0
+			nao_negativo27_2_quadrado: sb $t4, 4($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -8
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo25_3_quadrado
+			move $t4, $0
+			nao_negativo25_3_quadrado: sb $t4, 3($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo26_3_quadrado
+			move $t4, $0
+			nao_negativo26_3_quadrado: sb $t4, 3($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo27_3_quadrado
+			move $t4, $0
+			nao_negativo27_3_quadrado: sb $t4, 3($s5)
+			
+			########################################################################################
+			
+			
+			mul $t4, $s1, 4
+			addi $t5, $t5, 4
+			sub $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo25_4_quadrado
+			move $t4, $0
+			nao_negativo25_4_quadrado: sb $t4, 0($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo26_4_quadrado
+			move $t4, $0
+			nao_negativo26_4_quadrado: sb $t4, 0($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo27_4_quadrado
+			move $t4, $0
+			nao_negativo27_4_quadrado: sb $t4, 0($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo25_5_quadrado
+			move $t4, $0
+			nao_negativo25_5_quadrado: sb $t4, 6($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo26_5_quadrado
+			move $t4, $0
+			nao_negativo26_5_quadrado: sb $t4, 6($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo27_5_quadrado
+			move $t4, $0
+			nao_negativo27_5_quadrado: sb $t4, 6($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -8
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo25_6_quadrado
+			move $t4, $0
+			nao_negativo25_6_quadrado: sb $t4, 5($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo26_6_quadrado
+			move $t4, $0
+			nao_negativo26_6_quadrado: sb $t4, 5($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo27_6_quadrado
+			move $t4, $0
+			nao_negativo27_6_quadrado: sb $t4, 5($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, 4
+			mul $t4, $s1, 4
+			mul $t4, $t4, 2
+			add $t5, $t5, $t4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo25_7_quadrado
+			move $t4, $0
+			nao_negativo25_7_quadrado: sb $t4, 2($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo26_7_quadrado
+			move $t4, $0
+			nao_negativo26_7_quadrado: sb $t4, 2($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo27_7_quadrado
+			move $t4, $0
+			nao_negativo27_7_quadrado: sb $t4, 2($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, 4
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo25_8_quadrado
+			move $t4, $0
+			nao_negativo25_8_quadrado: sb $t4, 8($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo26_8_quadrado
+			move $t4, $0
+			nao_negativo26_8_quadrado: sb $t4, 8($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo27_8_quadrado
+			move $t4, $0
+			nao_negativo27_8_quadrado: sb $t4, 8($s5)
+			
+			########################################################################################
+			
+			addi $t5, $t5, -8
+			lw $t4, 0($t5)
+			sw $t4, 0($s7)
+			
+			lbu $t4, 2($s7)
+			sub $t4, $t4, $a1
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo25_9_quadrado
+			move $t4, $0
+			nao_negativo25_9_quadrado: sb $t4, 7($s3)
+			
+			lbu $t4, 1($s7)
+			sub $t4, $t4, $a2
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo26_9_quadrado
+			move $t4, $0
+			nao_negativo26_9_quadrado: sb $t4, 7($s4)
+			
+			lbu $t4, 0($s7)
+			sub $t4, $t4, $a3
+			slt $t9, $t4, $zero
+			beq $t9, $0, nao_negativo27_9_quadrado
+			move $t4, $0
+			nao_negativo27_9_quadrado: sb $t4, 7($s5)
+			
+			########################################################################################
+			
+			
+			#Chamando a funcao minimiza os valores dos vetores RGB
+			addi $sp, $sp, -20
+			sw $ra, 0($sp)
+			sw $a0, 4($sp)
+			sw $a1, 8($sp)
+			sw $a2, 12($sp)
+			sw $a3, 16($sp)
+			
+			addi $sp, $sp, -12 #Empilhando os contadores
+			sw $t1, 0($sp)
+			sw $t2, 4($sp)
+			sw $t3, 8($sp)
+			
+			
+			move $a0, $s3
+			move $a1, $s4
+			move $a2, $s5
+			li $a3, 9
+			jal minimiza
+			
+			lw $t3, 8($sp)
+			lw $t2, 4($sp)
+			lw $t1, 0($sp)
+			addi $sp, $sp, 12
+			
+			
+			lw $a3, 16($sp)
+			lw $a2, 12($sp)
+			lw $a1, 8($sp)
+			lw $a0, 4($sp)
+			lw $ra, 0($sp)
+			addi $sp, $sp, 20
+
+			la $t5, result
+			lw $t6, 0($t5)
+			sw $t6, 0($s6)
+			addi $s6, $s6, 4
+			addi $t2, $t2, 1
+			j Loop2_Bquadrado
+			
+			############################################################################
+			
+	exit_loop2_Bquadrado:
+			
+			slti $t4, $t1, 1
+			beq $t4, $zero, carrega_pixel_quadrado
+			move $t2, $0
+			addi $t1, $t1, 1	
+			j Loop1_Bquadrado
+			
+			carrega_pixel_quadrado:
+			
+			li $t4, 2
+			div $t1, $t4
+			mfhi $t4
+			beq $t4, $zero, parload_quadrado
+			li $t5, 0x10040000
+			addi $t4, $t1, -1
+			mul $t4, $t4, $s1 #linha menos 1 vezes largura
+			mul $t4, $t4, 4
+			add $t5, $t5, $t4
+			move $t6, $0
+			la $t7, buffer_extractor
+			loop_carrega_linha_quadrado:
+				beq $t6, $s1, exit_loop_carrega_linha_quadrado
+				lw $t8, 0($t7)
+				sw $t8, 0($t5)
+				addi $t5, $t5, 4
+				addi $t7, $t7, 4
+				addi $t6, $t6, 1
+				j loop_carrega_linha_quadrado
+			exit_loop_carrega_linha_quadrado:
+				move $t2, $0
+				addi $t1, $t1, 1
+				j Loop1_Bcruz
+			
+			parload_quadrado:
+				li $t5, 0x10040000
+				addi $t4, $t1, -1
+				mul $t4, $t4, $s1 #linha menos 1 vezes largura
+				mul $t4, $t4, 4
+				add $t5, $t5, $t4
+				move $t6, $0
+				la $t7, buffer_extractor2
+			loop_carrega_linha_quadrado2:
+				beq $t6, $s1, exit_loop_carrega_linha_quadrado2
+				lw $t8, 0($t7)
+				sw $t8, 0($t5)
+				addi $t5, $t5, 4
+				addi $t7, $t7, 4
+				addi $t6, $t6, 1
+				j loop_carrega_linha_quadrado2
+			exit_loop_carrega_linha_quadrado2:
+				move $t2, $0
+				addi $t1, $t1, 1
+					
+				j Loop1_Bquadrado
+					
+	exit_loop1_Bquadrado:
+	
+			li $t4, 2
+			div $t1, $t4
+			mfhi $t4
+			beq $t4, $zero, parload_ultimalinha_quadrado
+			li $t5, 0x10040000
+			addi $t4, $t1, -1
+			mul $t4, $t4, $s1 #linha menos 1 vezes largura
+			mul $t4, $t4, 4
+			add $t5, $t5, $t4	
+			move $t6, $0
+			la $t7, buffer_extractor
+			loop_carrega_linha_quadrado_ultimalinha:
+				beq $t6, $s1, exit_loop_carrega_linha_quadrado_ultimalinha
+				lw $t8, 0($t7)
+				sw $t8, 0($t5)
+				addi $t5, $t5, 4
+				addi $t7, $t7, 4
+				addi $t6, $t6, 1
+				j loop_carrega_linha_quadrado_ultimalinha
+			exit_loop_carrega_linha_quadrado_ultimalinha:
+				move $t2, $0
+				addi $t1, $t1, 1
+				j exit2_loop1_Bquadrado
+			
+			parload_ultimalinha_quadrado:
+				li $t5, 0x10040000
+				addi $t4, $t1, -1
+				mul $t4, $t4, $s1 #linha menos 1 vezes largura
+				mul $t4, $t4, 4
+				add $t5, $t5, $t4
+				move $t6, $0
+				la $t7, buffer_extractor2
+			loop_carrega_linha_quadrado2_ultimalinha:
+				beq $t6, $s1, exit2_loop1_Bquadrado
+				lw $t8, 0($t7)
+				sw $t8, 0($t5)
+				addi $t5, $t5, 4
+				addi $t7, $t7, 4
+				addi $t6, $t6, 1
+				j loop_carrega_linha_quadrado2_ultimalinha
+		
+		exit2_loop1_Bquadrado:
+		lw $s7, 28($sp)
+		lw $s6, 24($sp)
+		lw $s5, 20($sp)
+		lw $s4, 16($sp)
+		lw $s3, 12($sp)
+		lw $s2, 8($sp)
+		lw $s1, 4($sp)	
+		lw $s0, 0($sp)
+		addi $sp, $sp, 32
+	
+		j Exit_Edge_Extractor
+
+		
+Exit_Edge_Extractor:
+
+	addi $sp, $sp, -4
+	sw $ra, 0($sp)
+	move $a0, $fp
+	move $a1, $s1 #tamanho da imagem em bytes(ja foi restaurado da pilha)
+	jal Edge_detector
+	lw $ra, 0($sp)
+	addi $sp, $sp, 4
+	jr $ra
+###########################################################################################################################################
 						
 Edge_detector: # Funcao que recebe como parametros: 1) O endereço de delimitador $fp da pila onde se encontra a imagem original em $a0
-#2) o tamanho da imagem em bytes em $a1($s1). Esta funcao carrega a imagem original na memoria heap para ser mostrada no bitmap display
-
+#2) o tamanho da imagem em bytes em $a1. Esta funcao carrega a imagem original na memoria heap para ser mostrada no bitmap display
 
 	move $t0, $a0
 	
@@ -2778,24 +4834,9 @@ Edge_detector: # Funcao que recebe como parametros: 1) O endereço de delimitado
 exit_edge_detector:
 		jr $ra
 
-
-
-
-
-
-
-
-
-
-
-					
-										
-															
-																									
-	
+######################################################################################################################################
 minimiza: #Funcao que recebe como parametro o endereço dos vetores RGB em $a0, $a1, $a2 e o tamanho dos mesmo em $a3
 #Esta funcao encontra o valor minimo de cada vetor e retorna um vetor resultado com esses minimos 
-
 	
 	move $t0, $0
 	li $t1, 255
@@ -2814,10 +4855,8 @@ minimiza: #Funcao que recebe como parametro o endereço dos vetores RGB em $a0, 
 		j loop1_minimiza
 	exit1_minimiza:	
 		sb $t1, 2($t2)
-		
 		move $t0, $0
 		li $t1, 255
-		
 		loop2_minimiza:
 		beq $t0, $a3, exit2_minimiza 
 		lbu $t3, 0($a1)
@@ -2830,10 +4869,8 @@ minimiza: #Funcao que recebe como parametro o endereço dos vetores RGB em $a0, 
 		j loop2_minimiza
 	exit2_minimiza: 	
 		sb $t1, 1($t2)
-		
 		move $t0, $0
 		li $t1, 255
-		
 	loop3_minimiza:
 		beq $t0, $a3, exit3_minimiza 
 		lbu $t3, 0($a2)
